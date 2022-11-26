@@ -1,0 +1,8 @@
+# create virtual environment
+py -3 -m venv .venv
+# activate virtual environment
+.venv\scripts\activate
+# export required pip packages
+pipreqs $PATH_TO_CURRENT_WORKSPACE$
+# install dependancies
+pip -r install requirements.txt

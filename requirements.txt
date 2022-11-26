@@ -1,0 +1,7 @@
+pipreqs
+pandas
+jupyter
+seaborn
+scikit-learn
+keras
+tensorflow
