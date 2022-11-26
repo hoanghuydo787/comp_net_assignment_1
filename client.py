@@ -1,3 +1,4 @@
+# sample code
 from socket import *
 serverName = 'serverName'
 serverPort = 12000
