@@ -1,6 +1,7 @@
 # sample code
 from socket import *
 import pickle
+import time
 import threading
 from tkinter import Tk, Frame, Scrollbar, Label, END, Entry, Text, VERTICAL, Button, messagebox
 
@@ -63,20 +64,21 @@ class GUI:
         self.username.config(state='disabled')
         self.peerSocket.send(self.username.get().encode())
         self.password.config(state='disabled')
+        time.sleep(0.1)
         self.peerSocket.send(self.password.get().encode())
         reply = self.peerSocket.recv(1024).decode()
-        if reply == 'OK':
-            """frlist_dumps = b''
+        if reply == 'Success':
+            frlist_dumps = b''
             while True:
                 income = self.peerSocket.recv(1024)
-                if not income:
-                    break
                 frlist_dumps += income
+                if len(income) < 1024:
+                    break
             print(frlist_dumps)
-            frlist = pickle.loads(frlist_dumps)"""
+            frlist = pickle.loads(frlist_dumps)
             self.hide_frame()
 
-            #self.display_friend_box(frlist)
+            self.display_friend_box(frlist)
             self.display_chat_box()
             self.display_chat_entry_box()
             # Update status to others
@@ -126,9 +128,10 @@ class GUI:
         self.peerSocket.send(self.username.get().encode())
         self.password.config(state='disabled')
         self.repassword.config(state='disabled')
+        time.sleep(0.1)
         self.peerSocket.send(self.password.get().encode())
         reply = self.peerSocket.recv(1024).decode()
-        if reply == 'OK':
+        if reply == 'Success':
             messagebox.showinfo('Message', 'Sign up successful!')
             self.username.config(state='normal')
             self.password.config(state='normal')
@@ -166,7 +169,7 @@ class GUI:
     def display_friend_box(self, frlist):
         frame = Frame()
         Label(frame, text='Friend List:', font=("Serif", 12)).pack(side='top', anchor='w')
-        self.friend_area = Text(frame, width=30, height=10, font=("Serif", 12))
+        self.friend_area = Text(frame, width=30, height=15, font=("Serif", 12))
         scrollbar = Scrollbar(frame, command=self.friend_area.yview, orient=VERTICAL)
         self.friend_area.config(yscrollcommand=scrollbar.set)
         self.friend_area.bind('<KeyPress>', lambda e: 'break')
@@ -232,6 +235,12 @@ class GUI:
         self.repassframe = Frame()
         self.login_but = Frame()
         self.signup_but = Frame()
+
+    def clear_buffer(self, conn):
+        try:
+            while sock.recv(1024): pass
+        except:
+            pass
 
 if __name__ == '__main__':
     root = Tk()
