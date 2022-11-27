@@ -1,5 +1,10 @@
-import socket 
+# sample code
+from socket import *
 import threading
+import pickle
+import json
+import time
+
 
 
 class Server:
@@ -8,7 +13,7 @@ class Server:
     ACCEPT_CONNECTION = 'ACCEPT_CONNECTION'
     LOGIN = 'LOGIN'
     LOGOUT = 'LOGOUT'
-    REGISTER = 'REGISTER'
+    SIGNUP = 'SIGNUP'
     RETRIEVE_LIST_FRIEND =  'RETRIEVE LIST FRIEND'
 
     MAX_NUM_CLIENTS = 3
@@ -18,12 +23,34 @@ class Server:
         ......
         }
     """
-    user_info = {'win':  {'password' :'123',
+    """database = {'win':  {'password' :'123',
                    'list_friends': ['hana']},
                  'hana': {'password': '456',
                           'list_friends': ['win']}
         }
+    """
     user_logins = {}
+    clients_list = []
+    last_received_message = ""
+
+    def __init__(self):
+        self.server_socket = None
+        with open('database.json', 'r') as openfile:
+            self.database = json.load(openfile)
+        self.create_listening_server()
+    #listen for incoming connection
+
+    def create_listening_server(self):
+        self.server_socket = socket(AF_INET, SOCK_STREAM) #create a socket using TCP port and ipv4
+        server_host = '127.0.0.1'
+        server_port = 12000
+        # this will allow you to immediately restart a TCP server
+        self.server_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        # this makes the server listen to requests coming from other computers on the network
+        self.server_socket.bind((server_host, server_port))
+        print("the server is ready to receive..")
+        self.server_socket.listen(self.MAX_NUM_CLIENTS) #listen for incomming connections / max 5 clients
+        self.receive_messages_in_a_new_thread()
 
     def isOnline(self,username):
         try:
@@ -63,65 +90,51 @@ class Server:
         self.sendMessage(so,msg)
 
     def sendListFriend(self,username):
-        list_friends = ''
-        for name in self.user_info[username]['list_friends']:
+        list_friends = []
+        for name in self.database[username]['list_friends']:
             ip = port = None
             status = 'offline'
             if name in self.user_logins:
                 ip,port = self.user_logins[name][1]
                 status = 'online'
-            list_friends += f"({name},{ip},{port},{status})"
-        if list_friends == '':
-            list_friends = '|'
-        msg = self.RETRIEVE_LIST_FRIEND + list_friends
+            list_friends.append([name,ip,port,status])
         so = self.user_logins[username][0]
-        self.sendMessage(so,msg)
+        frlist = pickle.dumps(list_friends)
+        so.sendall(frlist)
 
-    def register(self,client,username,password):
-        if username not in self.user_info:
-            self.user_info[username] = {'password':password,'list_friends':[]}
-            self.sendMessage(client[0],self.REGISTER+'|successful')
+    def signup(self,conn):
+        username = conn.recv(1024).decode()
+        password = conn.recv(1024).decode()
+        if username not in self.database:
+            self.database[username] = {'password':password,'list_friends':[]}
+            self.sendMessage(conn,'Success')
+            with open("database.json", "w") as outfile:
+                json.dump(self.database, outfile)
             return True
         else:
-            self.sendMessage(client[0],self.REGISTER+'|fail')
+            self.sendMessage(conn,'Fail')
             return False
 
 
-    def login(self,client,username,password):
+    def login(self, client):
+        conn, _ = client
+        username = conn.recv(1024).decode()
+        password = conn.recv(1024).decode()
         if  self.authenticate(username,password):
             self.user_logins[username] = client
-            self.sendMessage(client[0],self.LOGIN + f'|successful')
+            self.sendMessage(conn,'Success')
+            time.sleep(0.1)
+            self.sendListFriend(username)
             return True
         else:
-            self.sendMessage(client[0], self.LOGIN + f'|fail')
+            self.sendMessage(conn,'Fail')
             return False
 
     def authenticate(self, username, password):
-        return username in self.user_info and self.user_info[username]['password'] == password
+        return username in self.database and self.database[username]['password'] == password
 
-    clients_list = []
-
-    last_received_message = ""
-
-    def __init__(self):
-        self.server_socket = None
-        self.create_listening_server()
-    #listen for incoming connection
-
-    def sendMessage(self,so,msg):
-        so.sendall(msg.encode('utf-8'))
-
-    def create_listening_server(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #create a socket using TCP port and ipv4
-        local_ip = '127.0.0.1'
-        local_port = 10319
-        # this will allow you to immediately restart a TCP server
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # this makes the server listen to requests coming from other computers on the network
-        self.server_socket.bind((local_ip, local_port))
-        print("Listening for incoming messages..")
-        self.server_socket.listen(self.MAX_NUM_CLIENTS) #listen for incomming connections / max 5 clients
-        self.receive_messages_in_a_new_thread()
+    def sendMessage(self,conn,msg):
+        conn.sendall(msg.encode())
 
     def disconnectClient(self,client):
         self.clients_list.remove(client)
@@ -135,25 +148,22 @@ class Server:
 
     def clientThread(self,client):
         so, _ = client
-        username = None
-        # login/register
+        # login/signup
         while True:
-            try:
-                incoming_buffer = so.recv(256) #initialize the buffer
+            """try:
+                rqst = so.recv(256) #initialize the buffer
             except:
                 self.disconnectClient(client)
-                return
-            request = incoming_buffer.decode('utf-8')
-            rqst, args = self.processRequest(request)
-            print(rqst,len(rqst),args)
+                return"""
+            rqst = so.recv(256)
+            rqst = rqst.decode()
             if  rqst == self.LOGIN:
-                if self.login(client,*args):
-                   break
-            elif rqst == self.REGISTER:
-                self.register(client,*args)
+                if self.login(client): break
+            elif rqst == self.SIGNUP:
+                self.signup(so)
 
-        username = self.username(*client[1])
-        while True:
+        #username = self.username(*client[1])
+        """while True:
             try:
                 incoming_buffer = so.recv(256) #initialize the buffer
             except:
@@ -174,8 +184,9 @@ class Server:
                 self.sendListFriend(username)
             else:
                 pass
+            """
 
-    #broadcast the message to all clients 
+    #broadcast the message to all clients
     def broadcast_to_all_clients(self, senders_socket):
         for client in self.clients_list:
             socket, (ip, port) = client
@@ -192,7 +203,7 @@ class Server:
             t = threading.Thread(target=self.clientThread, args=(client,))
             t.start()
 
-    #add a new client 
+    #add a new client
     def add_to_clients_list(self, client):
         if client not in self.clients_list:
             self.clients_list.append(client)
@@ -204,3 +215,5 @@ class Server:
 
 if __name__ == "__main__":
     Server()
+
+
