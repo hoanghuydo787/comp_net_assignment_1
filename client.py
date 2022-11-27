@@ -1,9 +1,10 @@
+# sample code
 from socket import *
 import pickle
 import time
 import threading
-from tkinter import Tk, Frame, Scrollbar, Label, END, Entry, Text, VERTICAL, Button, messagebox
-
+from tkinter import *
+from tkinter import messagebox
 
 
 class GUI:
@@ -17,13 +18,14 @@ class GUI:
         self.username = None
         self.password = None
         self.repassword = None
+        self.friend_list = [] #[[username, ip, port, status]]
+        self.target = None #username of opponent
         self.reset_frame()
         self.init_socket()
         self.init_gui()
-        #self.listen_for_incoming_messages_in_a_thread()
 
     def init_socket(self):
-        serverName = gethostbyname(gethostname())
+        serverName = "127.0.0.1"
         serverPort = 12000
         self.peerSocket = socket(AF_INET, SOCK_STREAM)
         self.peerSocket.connect((serverName, serverPort))
@@ -73,14 +75,13 @@ class GUI:
                 frlist_dumps += income
                 if len(income) < 1024:
                     break
-            print(frlist_dumps)
-            frlist = pickle.loads(frlist_dumps)
+            self.friend_list = pickle.loads(frlist_dumps)
             self.hide_frame()
 
-            self.display_friend_box(frlist)
+            self.display_friend_box()
             self.display_chat_box()
             self.display_chat_entry_box()
-            # Update status to others
+            self.listen_for_incoming_messages_in_a_thread()
         elif reply == 'Fail':
             messagebox.showinfo('Message', 'Username or password is invalid')
             self.username.config(state='normal')
@@ -165,19 +166,20 @@ class GUI:
         self.join_button = Button(frame, text="Join", width=10, command=self.on_join).pack(side='left')
         frame.pack(side='top', anchor='nw')
 
-    def display_friend_box(self, frlist):
+    def display_friend_box(self):
         frame = Frame()
         Label(frame, text='Friend List:', font=("Serif", 12)).pack(side='top', anchor='w')
-        self.friend_area = Text(frame, width=30, height=15, font=("Serif", 12))
-        scrollbar = Scrollbar(frame, command=self.friend_area.yview, orient=VERTICAL)
-        self.friend_area.config(yscrollcommand=scrollbar.set)
-        self.friend_area.bind('<KeyPress>', lambda e: 'break')
+        self.friend_area = Frame(frame, width=30, height=15)
+        scrollbar = Scrollbar(frame, orient=VERTICAL)
         self.friend_area.pack(side='left', padx=10)
         scrollbar.pack(side='right', fill='y')
         frame.pack(side='left')
-        for fr in frlist:
+        self.target = StringVar(self.friend_area, '')
+        for [name, ip, port, status] in self.friend_list:
+            Radiobutton(self.friend_area, text=str((name, status)), variable=self.target, value=name, indicator = 0, width=30, background = "light blue").pack(side='top', fill=X, ipady=5)
+        """for fr in frlist:
             self.friend_area.insert('end', fr[0] + '\n')
-            self.friend_area.yview(END)
+            self.friend_area.yview(END)"""
 
     def display_chat_box(self):
         frame = Frame()
