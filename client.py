@@ -1,4 +1,3 @@
-# sample code
 from socket import *
 import pickle
 import time
@@ -24,7 +23,7 @@ class GUI:
         #self.listen_for_incoming_messages_in_a_thread()
 
     def init_socket(self):
-        serverName = "127.0.0.1"
+        serverName = gethostbyname(gethostname())
         serverPort = 12000
         self.peerSocket = socket(AF_INET, SOCK_STREAM)
         self.peerSocket.connect((serverName, serverPort))

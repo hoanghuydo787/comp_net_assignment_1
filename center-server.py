@@ -1,4 +1,3 @@
-# sample code
 from socket import *
 import threading
 import pickle
@@ -42,7 +41,7 @@ class Server:
 
     def create_listening_server(self):
         self.server_socket = socket(AF_INET, SOCK_STREAM) #create a socket using TCP port and ipv4
-        server_host = '127.0.0.1'
+        server_host = gethostbyname(gethostname())
         server_port = 12000
         # this will allow you to immediately restart a TCP server
         self.server_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
