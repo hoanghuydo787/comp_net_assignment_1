@@ -239,7 +239,7 @@ class GUI:
 
     def clear_buffer(self, conn):
         try:
-            while sock.recv(1024): pass
+            while socket.recv(1024): pass
         except:
             pass
 
