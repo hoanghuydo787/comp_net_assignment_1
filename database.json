@@ -13,7 +13,10 @@
     },
     "higo": {
         "password": "123",
-        "list_friends": []
+        "list_friends": [
+            "win",
+            "hana"
+        ]
     },
     "aaa": {
         "password": "123",
