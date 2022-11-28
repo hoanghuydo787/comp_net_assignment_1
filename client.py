@@ -43,6 +43,8 @@ class GUI:
     LOGOUT = 'LOGOUT'
     SIGNUP = 'SIGNUP'
     FRIENDS_LIST = 'FRIENDS_LIST'
+    FILE_TRANSFER = 'FILE_TRANSFER'
+    MESSAGE = 'MESSAGE'
 
     def __init__(self, master):
         self.root = master
@@ -245,11 +247,34 @@ class GUI:
     def receive_message_from_self(self):
         while True:
             while True:
-                buffer = self.selfSocket.recv(256)
-                message = buffer.decode('utf-8')
-                self.chat_transcript_area.insert('end', message + '\n')
-                self.chat_transcript_area.yview(END)
-                if len(buffer)<256: break
+                msg = b''
+                while True:
+                    buffer = self.selfSocket.recv(1024)
+                    msg += buffer
+                    if len(buffer) <1024:
+                        break
+                header, args = pickle.loads(msg)
+                if header == self.MESSAGE:
+                    message = args[0]
+                    self.chat_transcript_area.insert('end', message + '\n')
+                    self.chat_transcript_area.yview(END)
+                elif header == self.FILE_TRANSFER:
+                    file = open(self.path + '/' + self.filename, 'wb')
+                    file.write(args[1])
+                    file.close()
+
+    def file_transfer(self,conn,file_path):
+        file = open(file_path, 'rb')
+        data = b''
+        while True:
+            line = file.read(1024)
+            data += line
+            if len(line)<1024:
+                break
+        file.close()
+        msg = (self.FILE_TRANSFER,(data,))
+        self.sendMessage(conn,msg)
+
 
     def display_name_section(self):
         frame = Frame()
@@ -337,7 +362,7 @@ class GUI:
 
     def clear_buffer(self, conn):
         try:
-            while sock.recv(1024): pass
+            while conn.recv(1024): pass
         except:
             pass
 def run_server():
