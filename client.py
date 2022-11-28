@@ -304,11 +304,6 @@ class GUI:
                 self.chat_history[username] += [msg]
 
 
-    # def listen_for_incoming_messages_in_a_thread(self):
-    #     thread = threading.Thread(target=self.receive_message_from_self)  # Create a thread for the send and receive in same time
-    #     thread.start()
-
-    # function to recieve msg
     def receive_message_from_server(self):
         while True:
             msg =self.recv(self.serverSocket)
@@ -326,48 +321,6 @@ class GUI:
                     self.accept_session(*args)
                 else: print('reject kết nối từ', op)
         self.serverSocket.close()
-
-
-    # def getAddr(self, username):
-    #     if username in self.friend_list:
-    #         return self.friend_list[username][0], self.friend_list[username][1]
-    #     return None
-
-    # def receive_message_from_self(self):
-    #     while True:
-    #         msg = b''
-    #         while True:
-    #             try:
-    #                 buffer = self.selfSocket.recv(1024)
-    #             except:
-    #                 return
-    #
-    #             msg += buffer
-    #             if len(buffer) <1024:
-    #                 break
-    #         header, args = pickle.loads(msg)
-    #         if header == self.MESSAGE:
-    #             user = args[0]
-    #             message = args[1]
-    #             if self.target not in self.chat_history: self.chat_history[self.target] = []
-    #             self.chat_history[self.target] += [message]
-    #             if self.target == user: self.insertchatbox(message)
-    #         elif header == self.FILE_TRANSFER:
-    #             filename = args[0]
-    #             if filename in listdir(self.path):
-    #                 file = filename.split('.')
-    #                 i = 1
-    #                 filename_i = file[0]+'('+str(i)+')'+file[1]
-    #                 while filename_i in listdir(self.path):
-    #                     i = i+1
-    #                     filename_i = file[0]+'('+str(i)+')'+file[1]
-    #                 filename = filename_i
-    #             file = open(self.path + '\\' + filename, 'wb')
-    #             file.write(args[1])
-    #             file.close()
-    #             msg = self.target + ' da gui cho ban ' + filename
-    #             self.insertchatbox(msg)
-    #             self.chat_history[self.target] += [msg]
 
     def file_transfer(self,conn,file_path):
         file = open(file_path, 'rb')
