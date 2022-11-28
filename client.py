@@ -48,7 +48,7 @@ class GUI:
     FRIENDS_LIST = 'FRIENDS_LIST'
     FILE_TRANSFER = 'FILE_TRANSFER'
     MESSAGE = 'MESSAGE'
-    path = ''
+    path = 'D:\\assignment2\\comp_net_assignment_1-master\\recv_file'
 
     def __init__(self, master):
         self.root = master
@@ -68,14 +68,23 @@ class GUI:
         self.reset_frame()
         self.init_socket()
         self.init_gui()
+        self.peers = {}
+
+    def createSocket(self):
+        try:
+            so = socket(AF_INET, SOCK_STREAM)
+            ip = HOST
+            port = random.randint(10000, 49151)
+            so.bind((ip,port))
+            return so, (ip, port)
+        except:
+            return self.createSocket()
 
     def init_socket(self):
         serverName = "127.0.0.1"
         serverPort = 12000
+
         self.serverSocket = socket(AF_INET, SOCK_STREAM)
-        self.targetSocket = socket(AF_INET, SOCK_STREAM)
-        self.selfSocket = socket(AF_INET, SOCK_STREAM)
-        self.selfSocket.connect((HOST, PORT))
         self.serverSocket.connect((serverName, serverPort))
 
     def sendMessage(self, conn, msg):
@@ -208,90 +217,157 @@ class GUI:
         self.login_ui()
 
     def request_session(self):
-        self.target = self.targets.get()
-        if self.friend_list[self.target][2] == 'offline':
+        username = self.targets.get()
+        if username in self.peers:
+            return
+        if self.friend_list[username][2] == 'OFFLINE':
             messagebox.showinfo('Message', 'The user if offline!')
             return
-        message = ('REQUEST_CONNECTION', (self.username.get(), self.target))
-        msg = pickle.dumps(message)
-        self.serverSocket.sendall(msg)
+        self.target = username
+        so,(ip,port) = self.createSocket()
+        msg = ('REQUEST_CONNECTION', (username,ip,port))
+        self.sendMessage(self.serverSocket,msg)
+        self.reset_chatbox()
+        print(ip,port)
+        t=threading.Thread(target=self.wait_connect,args = (so,username), daemon = True)
+        t.start()
 
-    def listen_for_incoming_messages_in_a_thread(self):
-        thread = threading.Thread(target=self.receive_message_from_self)  # Create a thread for the send and receive in same time
-        thread.start()
+    def wait_connect(self,so,username):
+        so.listen(5)
+        so.settimeout(120)
+        try:
+            conn, addr = so.accept()
+            self.peers[username] = conn
+            if username not in self.chat_history:
+                self.chat_history[username] = []
+            t = threading.Thread(target=self.receive_message_from_peer,args =(username,), daemon = True)
+            t.start()
+        except:
+            return
 
-    # function to recieve msg
-    def receive_message_from_server(self):
+    def accept_session(self,username,ip,port):
+        print(username,ip,port)
+        so = socket(AF_INET, SOCK_STREAM)
+        # try:
+        so.connect((ip,port))
+        self.peers[username]=so
+        if username not in self.chat_history:
+            self.chat_history[username]=[]
+
+        t = threading.Thread(target=self.receive_message_from_peer,args =(username,),daemon = True)
+        t.start()
+        # except:
+        #     print('Không thể connect tới',username)
+
+    def recv(self,conn):
+        msg = b''
         while True:
             try:
-                msg = self.serverSocket.recv(256)
+                buffer = conn.recv(1024)
             except:
+                return None
+            msg += buffer
+            if len(buffer) < 1024:
                 break
-            header, args = pickle.loads(msg)
-            if header == self.FRIENDS_LIST:
-                self.friend_list = args[0]
-                self.update_friend_box()
-            elif header == 'REQUEST_CONNECTION':
-                op = args[0]
-                if messagebox.askokcancel("Connect request", "Request connection from "+op):
-                    message = ('ACCEPT_CONNECTION', (self.username.get(), op))
-                    msg = pickle.dumps(message)
-                    self.serverSocket.sendall(msg)
-                    self.targetSocket.connect(self.getAddr(op))
-                    self.target = op
-                    self.listen_for_incoming_messages_in_a_thread()
-                else:
-                    message = ('REJECT_CONNECTION', (self.username.get(), op))
-                    msg = pickle.dumps(message)
-                    self.serverSocket.sendall(msg)
-            elif header == 'REJECT_CONNECTION':
-                messagebox.showinfo("Reply", "Request connection is rejected")
-            elif header == 'ACCEPT_CONNECTION':
-                self.targetSocket.connect(self.getAddr(args[0]))
-                self.listen_for_incoming_messages_in_a_thread()
-        self.serverSocket.close()
+        return msg
 
-
-    def getAddr(self, username):
-        if username in self.friend_list:
-            return self.friend_list[username][0], self.friend_list[username][1]
-        return None
-
-    def receive_message_from_self(self):
+    def receive_message_from_peer(self,username):
         while True:
-            msg = b''
-            while True:
-                try:
-                    buffer = self.selfSocket.recv(1024)
-                except:
-                    return
-
-                msg += buffer
-                if len(buffer) <1024:
-                    break
+            conn = self.peers[username]
+            # msg = self.recv(conn)
+            # if msg is None:
+            #     print('Disconnected to ',username)
+            #     return
+            msg = conn.recv(512)
             header, args = pickle.loads(msg)
             if header == self.MESSAGE:
-                user = args[0]
                 message = args[1]
-                if self.target not in self.chat_history: self.chat_history[self.target] = []
-                self.chat_history[self.target] += [message]
-                if self.target == user: self.insertchatbox(message)
+                self.chat_history[username] += [message]
+                print(self.target)
+                if self.target == message.split(':')[0]: self.insertchatbox(message)
+
             elif header == self.FILE_TRANSFER:
                 filename = args[0]
                 if filename in listdir(self.path):
                     file = filename.split('.')
                     i = 1
-                    filename_i = file[0]+'('+str(i)+')'+file[1]
+                    filename_i = file[0] + '(' + str(i) + ')' + file[1]
                     while filename_i in listdir(self.path):
-                        i = i+1
-                        filename_i = file[0]+'('+str(i)+')'+file[1]
+                        i = i + 1
+                        filename_i = file[0] + '(' + str(i) + ')' + file[1]
                     filename = filename_i
                 file = open(self.path + '\\' + filename, 'wb')
                 file.write(args[1])
                 file.close()
-                msg = self.target + ' da gui cho ban ' + filename
+                msg = username + ' da gui cho ban ' + filename
                 self.insertchatbox(msg)
-                self.chat_history[self.target] += [msg]
+                self.chat_history[username] += [msg]
+
+
+    # def listen_for_incoming_messages_in_a_thread(self):
+    #     thread = threading.Thread(target=self.receive_message_from_self)  # Create a thread for the send and receive in same time
+    #     thread.start()
+
+    # function to recieve msg
+    def receive_message_from_server(self):
+        while True:
+            msg =self.recv(self.serverSocket)
+            if msg is None:
+                print('Mát kết nối với server')
+                break
+            header, args = pickle.loads(msg)
+            if header == self.FRIENDS_LIST:
+                self.friend_list = args[0]
+                self.update_friend_box()
+            elif header == self.REQUEST_CONNECTION:
+                op = args[0]
+                if messagebox.askokcancel("Connect request", "Request connection from "+op):
+                    self.target = op
+                    self.accept_session(*args)
+                else: print('reject kết nối từ', op)
+        self.serverSocket.close()
+
+
+    # def getAddr(self, username):
+    #     if username in self.friend_list:
+    #         return self.friend_list[username][0], self.friend_list[username][1]
+    #     return None
+
+    # def receive_message_from_self(self):
+    #     while True:
+    #         msg = b''
+    #         while True:
+    #             try:
+    #                 buffer = self.selfSocket.recv(1024)
+    #             except:
+    #                 return
+    #
+    #             msg += buffer
+    #             if len(buffer) <1024:
+    #                 break
+    #         header, args = pickle.loads(msg)
+    #         if header == self.MESSAGE:
+    #             user = args[0]
+    #             message = args[1]
+    #             if self.target not in self.chat_history: self.chat_history[self.target] = []
+    #             self.chat_history[self.target] += [message]
+    #             if self.target == user: self.insertchatbox(message)
+    #         elif header == self.FILE_TRANSFER:
+    #             filename = args[0]
+    #             if filename in listdir(self.path):
+    #                 file = filename.split('.')
+    #                 i = 1
+    #                 filename_i = file[0]+'('+str(i)+')'+file[1]
+    #                 while filename_i in listdir(self.path):
+    #                     i = i+1
+    #                     filename_i = file[0]+'('+str(i)+')'+file[1]
+    #                 filename = filename_i
+    #             file = open(self.path + '\\' + filename, 'wb')
+    #             file.write(args[1])
+    #             file.close()
+    #             msg = self.target + ' da gui cho ban ' + filename
+    #             self.insertchatbox(msg)
+    #             self.chat_history[self.target] += [msg]
 
     def file_transfer(self,conn,file_path):
         file = open(file_path, 'rb')
@@ -309,7 +385,8 @@ class GUI:
 
     def display_logout_but(self):
         self.logout_but = Frame()
-        Button(self.logout_but, text="Log out", width=10, command=self.log_out).pack(side='bottom')
+        Label(self.logout_but, text=self.username.get()).pack(side='left', padx=10)
+        Button(self.logout_but, text="Log out", width=10, command=self.log_out).pack(side='left')
         self.logout_but.pack(anchor='nw')
 
     def display_name_section(self):
@@ -341,7 +418,6 @@ class GUI:
         for name in self.friend_list:
             Radiobutton(self.friend_area, text=str((name, self.friend_list[name][2])), variable=self.targets, value=name, indicator = 0, width=30, background = "light blue", command=self.request_session).pack(side='top', fill=X, ipady=5)
     def display_chat_box(self):
-        if self.chatframe: self.chatframe.pack_forget()
         self.chatframe = Frame()
         Label(self.chatframe, text='Chat Box:', font=("Serif", 12)).pack(side='top', anchor='w')
         self.chat_transcript_area = Text(self.chatframe, width=60, height=10, font=("Serif", 12))
@@ -376,10 +452,11 @@ class GUI:
 
     def send_chat(self):
         senders_name = self.username.get().strip() + ": "
+        conn = self.peers[self.target]
         data = self.enter_text_widget.get(1.0, 'end').strip()
         if data.split(' ')[0] == '\\file_transfer':
             path = data.split(' ')[1]
-            self.file_transfer(self.targetSocket, path)
+            self.file_transfer(conn, path)
             msg = 'Ban da gui file cho ' + self.target + ' '
             self.insertchatbox(msg)
             self.chat_history[self.target] += [msg]
@@ -388,10 +465,11 @@ class GUI:
         self.insertchatbox(msg)
         if self.target not in self.chat_history: self.chat_history[self.target] = []
         self.chat_history[self.target] += [msg]
+
         message = (self.MESSAGE, (self.username.get(), msg))
-        self.sendMessage(self.targetSocket, message)
+        self.sendMessage(conn, message)
         self.enter_text_widget.delete(1.0, 'end')
-        print(self.chat_history)
+        # print(self.chat_history)
         return 'break'
 
     def on_close_window(self):
@@ -417,6 +495,12 @@ class GUI:
         self.repassframe = Frame()
         self.login_but = Frame()
         self.signup_but = Frame()
+
+    def reset_chatbox(self):
+        if self.entryframe:self.entryframe.pack_forget()
+        if self.chatframe: self.chatframe.pack_forget()
+        self.display_chat_box()
+        self.display_chat_entry_box()
 
     def clear_buffer(self, conn):
         try:
