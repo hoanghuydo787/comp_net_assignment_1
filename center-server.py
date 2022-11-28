@@ -69,20 +69,20 @@ class Server:
                 return name
         return None
 
-    def requestConnection(self, src, des):
-        conn = self.user_logins[des][0]
-        msg = (self.REQUEST_CONNECTION, (src,))
+    def requestConnection(self,src_username,des_username,src_ip,src_port):
+        conn = self.user_logins[des_username][0]
+        msg = (self.REQUEST_CONNECTION, (src_username,src_ip,src_port))
         self.sendMessage(conn, msg)
 
-    def rejectConnection(self, src, des):
-        conn = self.user_logins[des][0]
-        msg = (self.REJECT_CONNECTION, (src,))
-        self.sendMessage(conn, msg)
-
-    def acceptConnection(self, src, des):
-        conn = self.user_logins[des][0]
-        msg = (self.ACCEPT_CONNECTION, (src,))
-        self.sendMessage(conn, msg)
+    # def rejectConnection(self, ):
+    #     conn = self.user_logins[des][0]
+    #     msg = (self.REJECT_CONNECTION, (src,))
+    #     self.sendMessage(conn, msg)
+    #
+    # def acceptConnection(self, src, des):
+    #     conn = self.user_logins[des][0]
+    #     msg = (self.ACCEPT_CONNECTION, (src,))
+    #     self.sendMessage(conn, msg)
 
     def updateStatus(self,username):
         friends_list = self.database[username]['list_friends']
@@ -145,7 +145,8 @@ class Server:
             self.updateStatus(username)
 
     def disconnectClient(self,client):
-        self.clients_list.remove(client)
+        if client in self.clients_list:
+            self.clients_list.remove(client)
         ip,port = client[1]
         print(f'Disconnect to ', ip, ':', str(port))
         client[0].close()
@@ -180,13 +181,9 @@ class Server:
                 return
             rqst, args = pickle.loads(msg)
             if rqst == self.REQUEST_CONNECTION:
-                self.requestConnection(*args)
-            elif rqst == self.REJECT_CONNECTION:
-                self.rejectConnection(*args)
-            elif rqst == self.ACCEPT_CONNECTION:
-                self.acceptConnection(*args)
+                self.requestConnection(username,*args)
             elif rqst == self.LOGOUT:
-                self.logout(*args)
+                self.logout(username)
                 self.clientThread(client)
             else:
                 raise "request error"
