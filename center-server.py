@@ -1,4 +1,3 @@
-# sample code
 from socket import *
 import threading
 import pickle
