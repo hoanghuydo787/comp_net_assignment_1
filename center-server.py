@@ -108,7 +108,7 @@ class Server:
     def signup(self,conn,username,password):
         if username not in self.database:
             self.database[username] = {'password':password,'list_friends':[]}
-            self.sendMessage(conn,'SUCCESS')
+            self.sendMessage(conn,('SUCCESS',))
             with open("database.json", "w") as outfile:
                 json.dump(self.database, outfile)
             return True
@@ -140,8 +140,9 @@ class Server:
         return username in self.database and self.database[username]['password'] == password
 
     def logout(self,username):
-        self.user_logins.pop(username)
-        self.updateStatus(username)
+        if username in self.user_logins:
+            self.user_logins.pop(username)
+            self.updateStatus(username)
 
     def disconnectClient(self,client):
         self.clients_list.remove(client)
