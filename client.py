@@ -204,8 +204,8 @@ class GUI:
         msg = pickle.dumps(message)
         self.serverSocket.sendall(msg)
 
-    def listen_for_incoming_messages_in_a_thread(self):
-        thread = threading.Thread(target=self.receive_message_from_self)  # Create a thread for the send and receive in same time
+    def listen_for_incoming_messages_in_a_thread(self,conn):
+        thread = threading.Thread(target=self.receive_message_from_self,args=(conn,))  # Create a thread for the send and receive in same time
         thread.start()
 
     # function to recieve msg
@@ -244,24 +244,27 @@ class GUI:
             return self.friend_list[username][0], self.friend_list[username][1]
         return None
 
-    def receive_message_from_self(self):
+    def receive_message_from_self(self,conn):
         while True:
+            msg = b''
             while True:
-                msg = b''
-                while True:
+                try:
                     buffer = self.selfSocket.recv(1024)
-                    msg += buffer
-                    if len(buffer) <1024:
-                        break
-                header, args = pickle.loads(msg)
-                if header == self.MESSAGE:
-                    message = args[0]
-                    self.chat_transcript_area.insert('end', message + '\n')
-                    self.chat_transcript_area.yview(END)
-                elif header == self.FILE_TRANSFER:
-                    file = open(self.path + '/' + self.filename, 'wb')
-                    file.write(args[1])
-                    file.close()
+                except:
+                    return
+
+                msg += buffer
+                if len(buffer) <1024:
+                    break
+            header, args = pickle.loads(msg)
+            if header == self.MESSAGE:
+                message = args[0]
+                self.chat_transcript_area.insert('end', message + '\n')
+                self.chat_transcript_area.yview(END)
+            elif header == self.FILE_TRANSFER:
+                file = open(self.path + '/' + self.filename, 'wb')
+                file.write(args[1])
+                file.close()
 
     def file_transfer(self,conn,file_path):
         file = open(file_path, 'rb')
