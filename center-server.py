@@ -139,16 +139,19 @@ class Server:
     def authenticate(self, username, password):
         return username in self.database and self.database[username]['password'] == password
 
+    def logout(self,username):
+        self.user_logins.pop(username)
+        self.updateStatus(username)
+
+    def disconnectClient(self,client):
+        self.clients_list.remove(client)
+        ip,port = client[1]
+        print(f'Disconnect to ', ip, ':', str(port))
+        client[0].close()
+
     def sendMessage(self,conn,msg):
         conn.sendall(pickle.dumps(msg))
 
-    def disconnectClient(self,username):
-        if username:
-            self.user_logins.pop(username)
-        self.updateStatus(username)
-
-        print(f'Disconnect to ', ip, ':', str(port))
-        client[0].close()
 
     def clientThread(self,client):
         so, _ = client
@@ -169,8 +172,9 @@ class Server:
 
         while True:
             try:
-                msg = so.recv(512) #initialize the buffer
+                msg = so.recv(512)
             except:
+                self.logout(username)
                 self.disconnectClient(client)
                 return
             rqst, args = pickle.loads(msg)
@@ -180,6 +184,9 @@ class Server:
                 self.rejectConnection(*args)
             elif rqst == self.ACCEPT_CONNECTION:
                 self.acceptConnection(*args)
+            elif rqst == self.LOGOUT:
+                self.logout(*args)
+                self.clientThread(client)
             else:
                 raise "request error"
 
@@ -206,12 +213,6 @@ class Server:
         if client not in self.clients_list:
             self.clients_list.append(client)
 
-        for client in self.clients_list:
-            print(client[1][1],' ')
-        print()
-
 
 if __name__ == "__main__":
     Server()
-
-
