@@ -3,13 +3,46 @@ from socket import *
 import pickle
 import time
 import threading
+import random
 from tkinter import *
 from tkinter import messagebox
 
+HOST = '127.0.0.1'
+PORT = random.randint(1024, 49151)
+
+class Server:
+    serverSocket = None
+    def __init__(self):
+        self.serverSocket = socket(AF_INET, SOCK_STREAM)
+        self.serverSocket.bind((HOST, PORT))
+        self.serverSocket.listen(2)
+        print("Connecting...")
+        peerASocket, addrA = self.serverSocket.accept()
+        while True:
+            peerSocket, addr = self.serverSocket.accept()
+            print('Connected ' + str(addr))
+            while True:
+                try:
+                    message = peerSocket.recv(1023)
+                    peerASocket.send(message)
+                except:
+                    break
+            peerSocket.close()
+
 
 class GUI:
-    peerSocket = None
+    serverSocket = None
+    targetSocket = None
+    selfSocket = None
     last_received_message = None
+
+    REQUEST_CONNECTION = 'REQUEST_CONNECTION'
+    REJECT_CONNECTION = 'REJECT_CONNECTION'
+    ACCEPT_CONNECTION = 'ACCEPT_CONNECTION'
+    LOGIN = 'LOGIN'
+    LOGOUT = 'LOGOUT'
+    SIGNUP = 'SIGNUP'
+    FRIENDS_LIST = 'FRIENDS_LIST'
 
     def __init__(self, master):
         self.root = master
@@ -18,7 +51,7 @@ class GUI:
         self.username = None
         self.password = None
         self.repassword = None
-        self.friend_list = [] #[[username, ip, port, status]]
+        self.friend_list = {} #{username: [ip, port, status]}
         self.target = None #username of opponent
         self.reset_frame()
         self.init_socket()
@@ -27,8 +60,14 @@ class GUI:
     def init_socket(self):
         serverName = "127.0.0.1"
         serverPort = 12000
-        self.peerSocket = socket(AF_INET, SOCK_STREAM)
-        self.peerSocket.connect((serverName, serverPort))
+        self.serverSocket = socket(AF_INET, SOCK_STREAM)
+        self.targetSocket = socket(AF_INET, SOCK_STREAM)
+        self.selfSocket = socket(AF_INET, SOCK_STREAM)
+        self.selfSocket.connect((HOST, PORT))
+        self.serverSocket.connect((serverName, serverPort))
+
+    def sendMessage(self, conn, msg):
+        conn.sendall(pickle.dumps(msg))
 
     def init_gui(self):  # GUI initializer
         self.root.title("Chat App")
@@ -61,28 +100,37 @@ class GUI:
         if len(self.password.get()) == 0:
             messagebox.showerror('Message', "Please enter password")
             return
-        self.peerSocket.send('LOGIN'.encode())
         self.username.config(state='disabled')
-        self.peerSocket.send(self.username.get().encode())
         self.password.config(state='disabled')
         time.sleep(0.1)
-        self.peerSocket.send(self.password.get().encode())
-        reply = self.peerSocket.recv(1024).decode()
-        if reply == 'Success':
+        msg = (self.LOGIN, (self.username.get(), self.password.get()))
+        self.sendMessage(self.serverSocket, msg)
+        time.sleep(0.1)
+        msg = (HOST, PORT)
+        self.sendMessage(self.serverSocket, msg)
+
+        header = None
+        while header != self.LOGIN:
+            header, (reply,) = pickle.loads(self.serverSocket.recv(1024))
+
+        if reply == 'SUCCESS':
             frlist_dumps = b''
             while True:
-                income = self.peerSocket.recv(1024)
+                income = self.serverSocket.recv(1024)
                 frlist_dumps += income
                 if len(income) < 1024:
                     break
-            self.friend_list = pickle.loads(frlist_dumps)
+            header, args = pickle.loads(frlist_dumps)
+            self.friend_list = args[0]
             self.hide_frame()
 
             self.display_friend_box()
             self.display_chat_box()
             self.display_chat_entry_box()
-            self.listen_for_incoming_messages_in_a_thread()
-        elif reply == 'Fail':
+            thread = threading.Thread(target=self.receive_message_from_server)
+            thread.start()
+
+        elif reply == 'FAIL':
             messagebox.showinfo('Message', 'Username or password is invalid')
             self.username.config(state='normal')
             self.password.config(state='normal')
@@ -123,40 +171,85 @@ class GUI:
         if self.password.get() != self.repassword.get():
             messagebox.showerror('Message', 'Password don\'t match')
             return
-        self.peerSocket.send('SIGNUP'.encode())
         self.username.config(state='disabled')
-        self.peerSocket.send(self.username.get().encode())
         self.password.config(state='disabled')
         self.repassword.config(state='disabled')
         time.sleep(0.1)
-        self.peerSocket.send(self.password.get().encode())
-        reply = self.peerSocket.recv(1024).decode()
-        if reply == 'Success':
+
+        msg = (self.SIGNUP, (self.username.get(), self.password.get()))
+        self.sendMessage(self.serverSocket, msg)
+
+        header = None
+        while header != self.SIGNUP:
+            header, (reply,) = pickle.loads(self.serverSocket.recv(1024))
+
+        if reply == 'SUCCESS':
             messagebox.showinfo('Message', 'Sign up successful!')
             self.username.config(state='normal')
             self.password.config(state='normal')
             self.repassword.config(state='normal')
-        elif reply == 'Fail':
+        elif reply == 'FAIL':
             messagebox.showinfo('Message', 'Username has in used')
             self.username.config(state='normal')
             self.password.config(state='normal')
             self.repassword.config(state='normal')
 
+    def request_session(self):
+        if self.friend_list[self.target.get()][2] == 'offline':
+            messagebox.showinfo('Message', 'The user if offline!')
+            return
+        message = ('REQUEST_CONNECTION', (self.username.get(), self.target.get()))
+        msg = pickle.dumps(message)
+        self.serverSocket.sendall(msg)
+
     def listen_for_incoming_messages_in_a_thread(self):
-        thread = threading.Thread(target=self.receive_message_from_server,
-                                  args=(self.peerSocket,))  # Create a thread for the send and receive in same time 
+        thread = threading.Thread(target=self.receive_message_from_self)  # Create a thread for the send and receive in same time
         thread.start()
 
     # function to recieve msg
-    def receive_message_from_server(self, so):
+    def receive_message_from_server(self):
         while True:
-            buffer = so.recv(256)
-            if not buffer:
+            try:
+                msg = self.serverSocket.recv(256)
+            except:
                 break
-            message = buffer.decode('utf-8')
-            self.chat_transcript_area.insert('end', message + '\n')
-            self.chat_transcript_area.yview(END)
-        so.close()
+            header, args = pickle.loads(msg)
+            if header == self.FRIENDS_LIST:
+                self.friend_list = args[0]
+                self.update_friend_box()
+            elif header == 'REQUEST_CONNECTION':
+                op = args[0]
+                if messagebox.askokcancel("Connect request", "Request connection from "+op):
+                    message = ('ACCEPT_CONNECTION', (self.username.get(), op))
+                    msg = pickle.dumps(message)
+                    self.serverSocket.sendall(msg)
+                    self.targetSocket.connect(self.getAddr(op))
+                    self.listen_for_incoming_messages_in_a_thread()
+                else:
+                    message = ('REJECT_CONNECTION', (self.username.get(), op))
+                    msg = pickle.dumps(message)
+                    self.serverSocket.sendall(msg)
+            elif header == 'REJECT_CONNECTION':
+                messagebox.showinfo("Reply", "Request connection is rejected")
+            elif header == 'ACCEPT_CONNECTION':
+                self.targetSocket.connect(self.getAddr(args[0]))
+                self.listen_for_incoming_messages_in_a_thread()
+        self.serverSocket.close()
+
+
+    def getAddr(self, username):
+        if username in self.friend_list:
+            return self.friend_list[username][0], self.friend_list[username][1]
+        return None
+
+    def receive_message_from_self(self):
+        while True:
+            while True:
+                buffer = self.selfSocket.recv(256)
+                message = buffer.decode('utf-8')
+                self.chat_transcript_area.insert('end', message + '\n')
+                self.chat_transcript_area.yview(END)
+                if len(buffer)<256: break
 
     def display_name_section(self):
         frame = Frame()
@@ -167,20 +260,25 @@ class GUI:
         frame.pack(side='top', anchor='nw')
 
     def display_friend_box(self):
-        frame = Frame()
-        Label(frame, text='Friend List:', font=("Serif", 12)).pack(side='top', anchor='w')
-        self.friend_area = Frame(frame, width=30, height=15)
-        scrollbar = Scrollbar(frame, orient=VERTICAL)
+        self.frframe = Frame()
+        Label(self.frframe, text='Friend List:', font=("Serif", 12)).pack(side='top', anchor='w')
+        self.friend_area = Frame(self.frframe, width=30, height=15)
+        scrollbar = Scrollbar(self.frframe, orient=VERTICAL)
         self.friend_area.pack(side='left', padx=10)
         scrollbar.pack(side='right', fill='y')
-        frame.pack(side='left')
+        self.frframe.pack(side='left')
         self.target = StringVar(self.friend_area, '')
-        for [name, ip, port, status] in self.friend_list:
-            Radiobutton(self.friend_area, text=str((name, status)), variable=self.target, value=name, indicator = 0, width=30, background = "light blue").pack(side='top', fill=X, ipady=5)
+        for name in self.friend_list:
+            Radiobutton(self.friend_area, text=str((name, self.friend_list[name][2])), variable=self.target, value=name, indicator = 0, width=30, background = "light blue", command=self.request_session).pack(side='top', fill=X, ipady=5)
         """for fr in frlist:
             self.friend_area.insert('end', fr[0] + '\n')
             self.friend_area.yview(END)"""
-
+    def update_friend_box(self):
+        self.friend_area.pack_forget()
+        self.friend_area = Frame(self.frframe, width=30, height=15)
+        self.friend_area.pack(side='left', padx=10)
+        for name in self.friend_list:
+            Radiobutton(self.friend_area, text=str((name, self.friend_list[name][2])), variable=self.target, value=name, indicator = 0, width=30, background = "light blue", command=self.request_session).pack(side='top', fill=X, ipady=5)
     def display_chat_box(self):
         frame = Frame()
         Label(frame, text='Chat Box:', font=("Serif", 12)).pack(side='top', anchor='w')
@@ -208,19 +306,19 @@ class GUI:
         self.enter_text_widget.delete(1.0, 'end')
 
     def send_chat(self):
-        senders_name = self.name_widget.get().strip() + ": "
+        senders_name = self.username.get().strip() + ": "
         data = self.enter_text_widget.get(1.0, 'end').strip()
         message = (senders_name + data).encode('utf-8')
         self.chat_transcript_area.insert('end', message.decode('utf-8') + '\n')
         self.chat_transcript_area.yview(END)
-        self.peerSocket.send(message)
+        self.targetSocket.send(message)
         self.enter_text_widget.delete(1.0, 'end')
         return 'break'
 
     def on_close_window(self):
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
             self.root.destroy()
-            self.peerSocket.close()
+            self.serverSocket.close()
             exit(0)
 
     def hide_frame(self):
@@ -239,11 +337,17 @@ class GUI:
 
     def clear_buffer(self, conn):
         try:
-            while socket.recv(1024): pass
+            while sock.recv(1024): pass
         except:
             pass
+def run_server():
+    Server()
+
 
 if __name__ == '__main__':
+    thread = threading.Thread(target=run_server)
+    thread.start()
+    time.sleep(0.1)
     root = Tk()
     gui = GUI(root)
     root.protocol("WM_DELETE_WINDOW", gui.on_close_window)
