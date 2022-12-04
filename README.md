@@ -14,3 +14,12 @@ Cách khởi tạo peer
 ```python
 python client.py
 ```
+## File Transfer
+
+Sender:
+Gõ vào khung chat command sau:
+``` \file_transfer _PATH ```
+với \_PATH là đường dẫn đến file
+
+Receiver:
+Chỉnh path trong class GUI để set thư mục lưu.
